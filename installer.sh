@@ -10,6 +10,9 @@
 
 POLICY_STRING="Installed"
 
+# Make sure apt-get calls are truly non-interactive
+export DEBIAN_FRONTEND=noninteractive
+
 if [ -z `which gcc` ]; then
   POLICY_STRING="Candidate"
 fi
@@ -205,6 +208,9 @@ if [ ! -f linux-${KERNEL}.tar.xz ] && [ ! -f linux-${KERNEL}.tar ]; then
 	elif [ ${KERNEL_BRANCH} -eq 3 ]; then
 		secure_download https://www.kernel.org/pub/linux/kernel/v3.0/linux-${KERNEL}.tar.xz
 		secure_download https://www.kernel.org/pub/linux/kernel/v3.0/linux-${KERNEL}.tar.sign
+	elif [ ${KERNEL_BRANCH} -eq 4 ]; then
+		secure_download https://www.kernel.org/pub/linux/kernel/v4.x/linux-${KERNEL}.tar.xz
+		secure_download https://www.kernel.org/pub/linux/kernel/v4.x/linux-${KERNEL}.tar.sign
 	fi
 
 		echo -n "==> Extracting linux-${KERNEL}.tar ... "
@@ -260,16 +266,18 @@ fi
 #
 # the lguest directory seems to be moving around quite a bit, as of 3.3.something
 # it resides under the tools directory. The best approach should be to just search for it 
-if [ ${KERNEL_BRANCH} -eq 3 ] && [ ! -s Documentation/lguest ]; then
-	cd Documentation
-	find .. -name lguest.c | xargs dirname | xargs ln -s
-	cd ..
+if [ ! -s Documentation/lguest ]; then
+	if [ ${KERNEL_BRANCH} -eq 3 ] || [ ${KERNEL_BRANCH} -eq 4 ]; then
+		cd Documentation
+		find .. -name lguest.c | xargs dirname | xargs ln -s
+		cd ..
+	fi
 fi
 
 cp /boot/config-`uname -r` .config
 if [ -z `grep "CONFIG_GRKERNSEC=y" .config` ]; then
-	echo "==> Current kernel doesn't seem to be running grsecurity. Running 'make menuconfig'"
-	make menuconfig
+	echo "==> Current kernel doesn't seem to be running grsecurity. Running 'make nconfig'"
+	make nconfig
 else
 	echo -n "==> Current kernel seems to be running grsecurity. Running 'make oldconfig' ... "
 	yes "" | make oldconfig &> /dev/null
@@ -283,13 +291,13 @@ NUM_CORES=`grep -c ^processor /proc/cpuinfo`
 make-kpkg clean &> /dev/null
 if [ $? -eq 0 ]; then echo -n "phase 1 OK ... "; else echo "Failed"; exit 1; fi
 
-make-kpkg --jobs=${NUM_CORES} --initrd --revision=${REVISION} kernel_image &> /dev/null
+make-kpkg --jobs=${NUM_CORES} --initrd --revision=${REVISION} kernel_image kernel_headers &> /dev/null
 if [ $? -eq 0 ]; then echo "phase 2 OK ... "; else echo "Failed"; exit 1; fi
 
 cd ..
 
 echo -n "==> Installing kernel ... "
-dpkg -i linux-image-${KERNEL}-grsec_`echo ${REVISION}`_*.deb &> /dev/null
+dpkg -i linux-{image,headers}-${KERNEL}-grsec_`echo ${REVISION}`_*.deb &> /dev/null
 if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
 
 
