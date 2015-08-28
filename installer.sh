@@ -8,6 +8,9 @@
 # Release: 2015-03-15
 #
 
+gpg_bash_lib_input_key_import_dir="/usr/share/whonix/grsecurity-installer-keys.d"
+source "/usr/lib/gpg-bash-lib/source_all"
+
 POLICY_STRING="Installed"
 
 # Make sure apt-get calls are truly non-interactive
@@ -173,22 +176,6 @@ read UNINSTALL
 
 echo "==> Installing grsecurity ${BRANCH} version $VERSION using kernel version ${KERNEL} ... "
 
-if [ ! -f spender-gpg-key.asc ]; then
-	echo "==> Downloading grsecurity GPG keys for package verification ... "
-	secure_download https://grsecurity.net/spender-gpg-key.asc
-
-	echo -n "==> Importing grsecurity GPG key ... "
-	gpg --import spender-gpg-key.asc &> /dev/null
-	if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
-fi
-
-if [ `gpg --list-keys | grep 6092693E | wc -l` -eq 0 ]; then
-	echo -n "==> Fetching kernel GPG key ... "
-	gpg --recv-keys 647F28654894E3BD457199BE38DBBDC86092693E &> /dev/null
-	if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
-fi
-
-
 echo -n "==> Installing packages needed for building the kernel ... ";
 apt-get -y -qq install ${BUILDTOOLS} xz-utils &> /dev/null
 if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
@@ -219,8 +206,14 @@ if [ ! -f linux-${KERNEL}.tar.xz ] && [ ! -f linux-${KERNEL}.tar ]; then
 fi
 
 echo -n "==> Verifying linux-${KERNEL}.tar ... "
-gpg --verify linux-${KERNEL}.tar.sign &> /dev/null
-if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
+
+gpg_bash_lib_input_sig_file="$PWD/linux-${KERNEL}.tar.sign"
+gpg_bash_lib_input_data_file="$PWD/linux-${KERNEL}.tar"
+
+gpg_bash_lib_function_main_verify
+trap - ERR
+
+if [ "$gpg_bash_lib_output_validsig_status" = 'true' ]; then echo "OK"; else echo "Failed"; exit 1; fi
 
 if [ ! -f grsecurity-${GRSEC}.patch ]; then
 	echo "==> Downloading grsecurity patch version ${GRSEC} ... "
@@ -235,8 +228,13 @@ if [ ! -f grsecurity-${GRSEC}.patch ]; then
 fi
 
 echo -n "==> Verifying grsecurity-${GRSEC}.patch ... "
-gpg --verify grsecurity-${GRSEC}.patch.sig &> /dev/null
-if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
+gpg_bash_lib_input_sig_file="$PWD/grsecurity-${GRSEC}.patch.sig"
+gpg_bash_lib_input_data_file="$PWD/grsecurity-${GRSEC}.patch"
+
+gpg_bash_lib_function_main_verify
+trap - ERR
+
+if [ "$gpg_bash_lib_output_validsig_status" = 'true' ]; then echo "OK"; else echo "Failed"; exit 1; fi
 
 if [ ! -d linux-${KERNEL} ]; then
 	echo -n "==> Unarchiving linux-${KERNEL}.tar ... "
@@ -296,8 +294,12 @@ if [ $? -eq 0 ]; then echo "phase 2 OK ... "; else echo "Failed"; exit 1; fi
 
 cd ..
 
+# If we reinstall the same kernel, we have to clean-up DKMS-built modules, otherwise they will not be rebuilt on kernel package installation
+echo "==> Cleaning old kernel modules ... "
+find /var/lib/dkms/ /lib/modules/ -name "*${KERNEL}*grsec*" -exec rm -r {} \+ &>/dev/null
+
 echo -n "==> Installing kernel ... "
-dpkg -i linux-{image,headers}-${KERNEL}-grsec_`echo ${REVISION}`_*.deb &> /dev/null
+dpkg -i linux-{image,headers}-${KERNEL}-grsec_${REVISION}_*.deb &> /dev/null
 if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
 
 
