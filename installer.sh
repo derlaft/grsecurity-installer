@@ -20,6 +20,19 @@ if [ -z `which gcc` ]; then
   POLICY_STRING="Candidate"
 fi
 
+BAD_OPTIONS=(
+	'PAX_MEMORY_UDEREF It causes kernel-panic in VirtualBox/VMWare guest mode' 
+	'PAX_KERNEXEC It causes kernel-panic in VirtualBox/VMWare guest mode'
+	'PAX_MPROTECT No infrastructure for applying MPROTECT exceptions in Debian: most software will not work'
+	'PAX_MEMORY_SANITIZE Disabling slightly improves performance in VirtualBox gust mode'
+	'PAX_MEMORY_STACKLEAK Disabling slightly improves performance in VirtualBox gust mode'
+)
+
+OK_OPTIONS=(
+	'GRKERNSEC Grsecurity is not enabled, \e[01;31myou are wasting your time\e[0m'
+	'PAX_PAGEEXEC Improves perfomance on vitrual machines'
+)
+
 GCC_VERSION=`LANGUAGE=C apt-cache policy gcc | grep "$POLICY_STRING:" | cut -c 16-18`
 
 BUILDTOOLS="build-essential bin86 kernel-package libncurses5-dev zlib1g-dev gcc-${GCC_VERSION}-plugin-dev bc"
@@ -53,8 +66,9 @@ The installation will be carried out in the following steps:
 8. Apply the grsecurity kernel patch to the kernel source
 9. Copy the current kernel configuration from /boot
 10. Configure the kernel by
-	a) running 'make menuconfig' if the current kernel doesn't support grsecurity
-	b) running 'make oldconfig' if the current kernel supports grsecurity
+	a) selecting a shipped configuration file
+	b) running 'make menuconfig' if the current kernel doesn't support grsecurity
+	c) running 'make oldconfig' if the current kernel supports grsecurity
 11. Compile the kernel into a debian package
 12. Install the debian package
 
@@ -154,6 +168,7 @@ done
 echo -n "==> Please make your selection: [1-$COUNTER]: "
 
 read SELECTION
+
 
 DATA=${VERSIONS[$SELECTION]}
 VERSION=`echo $DATA | sed -e 's/-/ /g' | awk '{print $1}'`
@@ -273,7 +288,11 @@ if [ ! -s Documentation/lguest ]; then
 fi
 
 cp /boot/config-`uname -r` .config
-if [ -z `grep "CONFIG_GRKERNSEC=y" .config` ]; then
+is_set() {
+	grep -q "CONFIG_$2=y" .config
+}
+
+if ! is_set GRKERNSEC; then
 	echo "==> Current kernel doesn't seem to be running grsecurity. Running 'make nconfig'"
 	make nconfig
 else
@@ -281,6 +300,29 @@ else
 	yes "" | make oldconfig &> /dev/null
 	if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
 fi
+
+DO_CHECK=y
+while [ "${DO_CHECK}" == 'y' ]; do
+	echo "==> Checking kernel configuration ..."
+
+	for OPTION in "${OK_OPTIONS[@]}"; do
+		OPT_NAME=${OPTION%% *}
+		OPT_TEXT=${OPTION#* }
+		( ! is_set "${CONFIG}" "${OPT_NAME}" ) && echo -e "Option ${OPT_NAME} is disabled and recommended to be enabled (${OPT_TEXT})"
+	done
+
+	for OPTION in "${BAD_OPTIONS[@]}"; do
+		OPT_NAME=${OPTION%% *}
+		OPT_TEXT=${OPTION#* }
+		is_set "${CONFIG}" "${OPT_NAME}" && echo -e "Option ${OPT_NAME} is enabled and recommended to be disabled (${OPT_TEXT})"
+	done
+
+
+	DO_CHECK=n
+	echo -n "==> Would you like to reconfigure kernel? [y/N] "
+	read DO_CHECK
+	[ "${DO_CHECK}" == 'y' ] && make nconfig
+done
 
 echo -n "==> Building kernel ... "
 
