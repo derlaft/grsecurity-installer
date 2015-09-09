@@ -49,7 +49,7 @@ fi
 
 clear
 
-echo "Welcome to the automagic grsecurity Debian Installer
+echo "Welcome to the automagic grsecurity Whonix Installer
 
 We will be working from /usr/src so make sure to have at least
 4 GB of free space on the partition where /usr/src resides.
@@ -57,18 +57,18 @@ We will be working from /usr/src so make sure to have at least
 The installation will be carried out in the following steps:
 1. Fetch the current version from grsecurity.net
 2. Letting you choose which version you would like to install
-3. Download PGP keys for download verification (first run only)
-4. Install the following debian packages if needed:
+3. Install the following debian packages if needed:
 	 ${BUILDTOOLS} curl xz-utils
-5. Download the kernel source from www.kernel.org
-6. Download the grsecurity patch from grsecurity.net
-7. Verify the downloads and extract the kernel
-8. Apply the grsecurity kernel patch to the kernel source
-9. Copy the current kernel configuration from /boot
-10. Configure the kernel by
+4. Download the kernel source from www.kernel.org
+5. Download the grsecurity patch from grsecurity.net
+6. Verify the downloads with shipped keys and extract the kernel
+7. Apply the grsecurity kernel patch to the kernel source
+8. Copy the current kernel configuration from /boot
+9. Configure the kernel by
 	a) selecting a shipped configuration file
-	b) running 'make menuconfig' if the current kernel doesn't support grsecurity
+	b) running 'make nconfig' if the current kernel doesn't support grsecurity
 	c) running 'make oldconfig' if the current kernel supports grsecurity
+10. Checking user configuration file
 11. Compile the kernel into a debian package
 12. Install the debian package
 
