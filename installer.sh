@@ -8,11 +8,30 @@
 # Release: 2015-03-15
 #
 
+gpg_bash_lib_input_key_import_dir="/usr/share/whonix/grsecurity-installer-keys.d"
+source "/usr/lib/gpg-bash-lib/source_all"
+
 POLICY_STRING="Installed"
+
+# Make sure apt-get calls are truly non-interactive
+export DEBIAN_FRONTEND=noninteractive
 
 if [ -z `which gcc` ]; then
   POLICY_STRING="Candidate"
 fi
+
+BAD_OPTIONS=(
+	'PAX_MEMORY_UDEREF It causes kernel-panic in VirtualBox/VMWare guest mode' 
+	'PAX_KERNEXEC It causes kernel-panic in VirtualBox/VMWare guest mode'
+	'PAX_MPROTECT No infrastructure for applying MPROTECT exceptions in Debian: most software will not work'
+	'PAX_MEMORY_SANITIZE Disabling slightly improves performance in VirtualBox gust mode'
+	'PAX_MEMORY_STACKLEAK Disabling slightly improves performance in VirtualBox gust mode'
+)
+
+OK_OPTIONS=(
+	'GRKERNSEC Grsecurity is not enabled, \e[01;31myou are wasting your time\e[0m'
+	'PAX_PAGEEXEC Improves perfomance on vitrual machines'
+)
 
 GCC_VERSION=`LANGUAGE=C apt-cache policy gcc | grep "$POLICY_STRING:" | cut -c 16-18`
 
@@ -30,7 +49,7 @@ fi
 
 clear
 
-echo "Welcome to the automagic grsecurity Debian Installer
+echo "Welcome to the automagic grsecurity Whonix Installer
 
 We will be working from /usr/src so make sure to have at least
 4 GB of free space on the partition where /usr/src resides.
@@ -38,17 +57,18 @@ We will be working from /usr/src so make sure to have at least
 The installation will be carried out in the following steps:
 1. Fetch the current version from grsecurity.net
 2. Letting you choose which version you would like to install
-3. Download PGP keys for download verification (first run only)
-4. Install the following debian packages if needed:
+3. Install the following debian packages if needed:
 	 ${BUILDTOOLS} curl xz-utils
-5. Download the kernel source from www.kernel.org
-6. Download the grsecurity patch from grsecurity.net
-7. Verify the downloads and extract the kernel
-8. Apply the grsecurity kernel patch to the kernel source
-9. Copy the current kernel configuration from /boot
-10. Configure the kernel by
-	a) running 'make menuconfig' if the current kernel doesn't support grsecurity
-	b) running 'make oldconfig' if the current kernel supports grsecurity
+4. Download the kernel source from www.kernel.org
+5. Download the grsecurity patch from grsecurity.net
+6. Verify the downloads with shipped keys and extract the kernel
+7. Apply the grsecurity kernel patch to the kernel source
+8. Copy the current kernel configuration from /boot
+9. Configure the kernel by
+	a) selecting a shipped configuration file
+	b) running 'make nconfig' if the current kernel doesn't support grsecurity
+	c) running 'make oldconfig' if the current kernel supports grsecurity
+10. Checking user configuration file
 11. Compile the kernel into a debian package
 12. Install the debian package
 
@@ -149,6 +169,7 @@ echo -n "==> Please make your selection: [1-$COUNTER]: "
 
 read SELECTION
 
+
 DATA=${VERSIONS[$SELECTION]}
 VERSION=`echo $DATA | sed -e 's/-/ /g' | awk '{print $1}'`
 KERNEL=`echo $DATA | sed -e 's/-/ /g' | awk '{print $2}'`
@@ -170,22 +191,6 @@ read UNINSTALL
 
 echo "==> Installing grsecurity ${BRANCH} version $VERSION using kernel version ${KERNEL} ... "
 
-if [ ! -f spender-gpg-key.asc ]; then
-	echo "==> Downloading grsecurity GPG keys for package verification ... "
-	secure_download https://grsecurity.net/spender-gpg-key.asc
-
-	echo -n "==> Importing grsecurity GPG key ... "
-	gpg --import spender-gpg-key.asc &> /dev/null
-	if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
-fi
-
-if [ `gpg --list-keys | grep 6092693E | wc -l` -eq 0 ]; then
-	echo -n "==> Fetching kernel GPG key ... "
-	gpg --recv-keys 647F28654894E3BD457199BE38DBBDC86092693E &> /dev/null
-	if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
-fi
-
-
 echo -n "==> Installing packages needed for building the kernel ... ";
 apt-get -y -qq install ${BUILDTOOLS} xz-utils &> /dev/null
 if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
@@ -205,6 +210,9 @@ if [ ! -f linux-${KERNEL}.tar.xz ] && [ ! -f linux-${KERNEL}.tar ]; then
 	elif [ ${KERNEL_BRANCH} -eq 3 ]; then
 		secure_download https://www.kernel.org/pub/linux/kernel/v3.0/linux-${KERNEL}.tar.xz
 		secure_download https://www.kernel.org/pub/linux/kernel/v3.0/linux-${KERNEL}.tar.sign
+	elif [ ${KERNEL_BRANCH} -eq 4 ]; then
+		secure_download https://www.kernel.org/pub/linux/kernel/v4.x/linux-${KERNEL}.tar.xz
+		secure_download https://www.kernel.org/pub/linux/kernel/v4.x/linux-${KERNEL}.tar.sign
 	fi
 
 		echo -n "==> Extracting linux-${KERNEL}.tar ... "
@@ -213,8 +221,14 @@ if [ ! -f linux-${KERNEL}.tar.xz ] && [ ! -f linux-${KERNEL}.tar ]; then
 fi
 
 echo -n "==> Verifying linux-${KERNEL}.tar ... "
-gpg --verify linux-${KERNEL}.tar.sign &> /dev/null
-if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
+
+gpg_bash_lib_input_sig_file="$PWD/linux-${KERNEL}.tar.sign"
+gpg_bash_lib_input_data_file="$PWD/linux-${KERNEL}.tar"
+
+gpg_bash_lib_function_main_verify
+trap - ERR
+
+if [ "$gpg_bash_lib_output_validsig_status" = 'true' ]; then echo "OK"; else echo "Failed"; exit 1; fi
 
 if [ ! -f grsecurity-${GRSEC}.patch ]; then
 	echo "==> Downloading grsecurity patch version ${GRSEC} ... "
@@ -229,8 +243,13 @@ if [ ! -f grsecurity-${GRSEC}.patch ]; then
 fi
 
 echo -n "==> Verifying grsecurity-${GRSEC}.patch ... "
-gpg --verify grsecurity-${GRSEC}.patch.sig &> /dev/null
-if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
+gpg_bash_lib_input_sig_file="$PWD/grsecurity-${GRSEC}.patch.sig"
+gpg_bash_lib_input_data_file="$PWD/grsecurity-${GRSEC}.patch"
+
+gpg_bash_lib_function_main_verify
+trap - ERR
+
+if [ "$gpg_bash_lib_output_validsig_status" = 'true' ]; then echo "OK"; else echo "Failed"; exit 1; fi
 
 if [ ! -d linux-${KERNEL} ]; then
 	echo -n "==> Unarchiving linux-${KERNEL}.tar ... "
@@ -260,21 +279,50 @@ fi
 #
 # the lguest directory seems to be moving around quite a bit, as of 3.3.something
 # it resides under the tools directory. The best approach should be to just search for it 
-if [ ${KERNEL_BRANCH} -eq 3 ] && [ ! -s Documentation/lguest ]; then
-	cd Documentation
-	find .. -name lguest.c | xargs dirname | xargs ln -s
-	cd ..
+if [ ! -s Documentation/lguest ]; then
+	if [ ${KERNEL_BRANCH} -eq 3 ] || [ ${KERNEL_BRANCH} -eq 4 ]; then
+		cd Documentation
+		find .. -name lguest.c | xargs dirname | xargs ln -s
+		cd ..
+	fi
 fi
 
 cp /boot/config-`uname -r` .config
-if [ -z `grep "CONFIG_GRKERNSEC=y" .config` ]; then
-	echo "==> Current kernel doesn't seem to be running grsecurity. Running 'make menuconfig'"
-	make menuconfig
+is_set() {
+	grep -q "CONFIG_$2=y" .config
+}
+
+if ! is_set GRKERNSEC; then
+	echo "==> Current kernel doesn't seem to be running grsecurity. Running 'make nconfig'"
+	make nconfig
 else
 	echo -n "==> Current kernel seems to be running grsecurity. Running 'make oldconfig' ... "
 	yes "" | make oldconfig &> /dev/null
 	if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
 fi
+
+DO_CHECK=y
+while [ "${DO_CHECK}" == 'y' ]; do
+	echo "==> Checking kernel configuration ..."
+
+	for OPTION in "${OK_OPTIONS[@]}"; do
+		OPT_NAME=${OPTION%% *}
+		OPT_TEXT=${OPTION#* }
+		( ! is_set "${CONFIG}" "${OPT_NAME}" ) && echo -e "Option ${OPT_NAME} is disabled and recommended to be enabled (${OPT_TEXT})"
+	done
+
+	for OPTION in "${BAD_OPTIONS[@]}"; do
+		OPT_NAME=${OPTION%% *}
+		OPT_TEXT=${OPTION#* }
+		is_set "${CONFIG}" "${OPT_NAME}" && echo -e "Option ${OPT_NAME} is enabled and recommended to be disabled (${OPT_TEXT})"
+	done
+
+
+	DO_CHECK=n
+	echo -n "==> Would you like to reconfigure kernel? [y/N] "
+	read DO_CHECK
+	[ "${DO_CHECK}" == 'y' ] && make nconfig
+done
 
 echo -n "==> Building kernel ... "
 
@@ -283,13 +331,17 @@ NUM_CORES=`grep -c ^processor /proc/cpuinfo`
 make-kpkg clean &> /dev/null
 if [ $? -eq 0 ]; then echo -n "phase 1 OK ... "; else echo "Failed"; exit 1; fi
 
-make-kpkg --jobs=${NUM_CORES} --initrd --revision=${REVISION} kernel_image &> /dev/null
+make-kpkg --jobs=${NUM_CORES} --initrd --revision=${REVISION} kernel_image kernel_headers &> /dev/null
 if [ $? -eq 0 ]; then echo "phase 2 OK ... "; else echo "Failed"; exit 1; fi
 
 cd ..
 
+# If we reinstall the same kernel, we have to clean-up DKMS-built modules, otherwise they will not be rebuilt on kernel package installation
+echo "==> Cleaning old kernel modules ... "
+find /var/lib/dkms/ /lib/modules/ -name "*${KERNEL}*grsec*" -exec rm -r {} \+ &>/dev/null
+
 echo -n "==> Installing kernel ... "
-dpkg -i linux-image-${KERNEL}-grsec_`echo ${REVISION}`_*.deb &> /dev/null
+dpkg -i linux-{image,headers}-${KERNEL}-grsec_${REVISION}_*.deb &> /dev/null
 if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
 
 
