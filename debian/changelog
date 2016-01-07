@@ -1,3 +1,8 @@
+grsecurity-installer (3:0.3-1) unstable; urgency=low
+
+  * New upstream version (local package).
+
+ -- Alexey Derlaft <derlafff@yandex.ru>  Wed, 9 Sep 2015 09:15:26 +0000
 grsecurity-installer (3:0.2-1) unstable; urgency=low
 
   * New upstream version (local package).

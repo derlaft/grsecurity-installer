@@ -11,15 +11,6 @@
 gpg_bash_lib_input_key_import_dir="/usr/share/whonix/grsecurity-installer-keys.d"
 source "/usr/lib/gpg-bash-lib/source_all"
 
-POLICY_STRING="Installed"
-
-# Make sure apt-get calls are truly non-interactive
-export DEBIAN_FRONTEND=noninteractive
-
-if [ -z `which gcc` ]; then
-  POLICY_STRING="Candidate"
-fi
-
 BAD_OPTIONS=(
 	'PAX_MEMORY_UDEREF It causes kernel-panic in VirtualBox/VMWare guest mode' 
 	'PAX_KERNEXEC It causes kernel-panic in VirtualBox/VMWare guest mode'
@@ -33,9 +24,8 @@ OK_OPTIONS=(
 	'PAX_PAGEEXEC Improves perfomance on vitrual machines'
 )
 
-GCC_VERSION=`LANGUAGE=C apt-cache policy gcc | grep "$POLICY_STRING:" | cut -c 16-18`
 
-BUILDTOOLS="build-essential bin86 kernel-package libncurses5-dev zlib1g-dev gcc-${GCC_VERSION}-plugin-dev bc"
+KERNEL_CONFIG_DIR=/usr/share/grsecurity-installer/
 
 if [ `whoami` != "root" ]; then
 	echo "This script needs to be run as root!"
@@ -57,26 +47,26 @@ We will be working from /usr/src so make sure to have at least
 The installation will be carried out in the following steps:
 1. Fetch the current version from grsecurity.net
 2. Letting you choose which version you would like to install
-3. Install the following debian packages if needed:
-	 ${BUILDTOOLS} curl xz-utils
-4. Download the kernel source from www.kernel.org
-5. Download the grsecurity patch from grsecurity.net
-6. Verify the downloads with shipped keys and extract the kernel
-7. Apply the grsecurity kernel patch to the kernel source
-8. Copy the current kernel configuration from /boot
-9. Configure the kernel by
-	a) selecting a shipped configuration file
-	b) running 'make nconfig' if the current kernel doesn't support grsecurity
-	c) running 'make oldconfig' if the current kernel supports grsecurity
-10. Checking user configuration file
-11. Compile the kernel into a debian package
-12. Install the debian package
+3. Download the kernel source from www.kernel.org
+4. Download the grsecurity patch from grsecurity.net
+5. Verify the downloads with shipped keys and extract the kernel
+6. Apply the grsecurity kernel patch to the kernel source
+7. Copy the current kernel configuration from /boot
+8. Configure the kernel by
+	1) selecting a shipped configuration file
+	2) running 'make nconfig' if the current kernel doesn't support grsecurity
+	3) running 'make oldconfig' if the current kernel supports grsecurity
+9. Checking user configuration file
+10. Compile the kernel into a debian package
+11. Install the debian package
 
 "
 
 DOWNLOAD_STABLE=1
 DOWNLOAD_STABLE2=1
 DOWNLOAD_TESTING=1
+
+cd /usr/src
 
 if [ -f latest_stable_patch ]; then
 	STABLE_MTIME=`expr $(date +%s) - $(date +%s -r latest_stable_patch)`
@@ -106,12 +96,6 @@ if [ -f latest_test_patch ]; then
 	else
 		DOWNLOAD_TESTING=0
 	fi
-fi
-
-if [ -z `which curl` ]; then
-	echo "==> Installing curl ..."
-	apt-get -y -qq install curl &> /dev/null
-	if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
 fi
 
 function secure_download {
@@ -185,15 +169,7 @@ else
 fi
 
 
-echo -n "==> Remove build tools after install? (${BUILDTOOLS}): [y/N] "
-read UNINSTALL
-
-
 echo "==> Installing grsecurity ${BRANCH} version $VERSION using kernel version ${KERNEL} ... "
-
-echo -n "==> Installing packages needed for building the kernel ... ";
-apt-get -y -qq install ${BUILDTOOLS} xz-utils &> /dev/null
-if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
 
 cd /usr/src
 
@@ -287,13 +263,42 @@ if [ ! -s Documentation/lguest ]; then
 	fi
 fi
 
-cp /boot/config-`uname -r` .config
+cd $KERNEL_CONFIG_DIR
+CONFIGS=$(ls -1 /boot/config-* | sort --version-sort; ls -1 *.config)
+
+# magic to make it bash array
+OLDIFS="$IFS"
+IFS=$'\n'
+CONFIGS=($CONFIGS)
+IFS="$OLDIFS"
+
+COUNTER=0
+echo "==> Checking available configuration files..."
+for CONFIG in "${CONFIGS[@]}"; do
+	echo "==> $COUNTER. ${CONFIGS[$COUNTER]}"
+	let COUNTER++
+done
+
+SELECTION="/boot/config-`uname -r`"
+echo "==> What kernel config would you prefer to use?"
+echo -n "==> Enter your choice [0-$((COUNTER-1))], default $SELECTION: "
+read CHOICE
+
+if [[ "$CHOICE" -gt 0 ]] && [[ "$CHOICE" -lt "$COUNTER" ]]; then
+	SELECTION="${CONFIGS[$CHOICE]}"
+fi
+
+
+echo cp "$SELECTION" /usr/src/linux/.config
+cp "$SELECTION" /usr/src/linux/.config
+cd /usr/src/linux
+
 is_set() {
-	grep -q "CONFIG_$2=y" .config
+	grep -q "^CONFIG_$1=y$" .config
 }
 
 if ! is_set GRKERNSEC; then
-	echo "==> Current kernel doesn't seem to be running grsecurity. Running 'make nconfig'"
+	echo "==> Current kernel doesn't seem to be running grsecurity."
 	make nconfig
 else
 	echo -n "==> Current kernel seems to be running grsecurity. Running 'make oldconfig' ... "
@@ -308,13 +313,13 @@ while [ "${DO_CHECK}" == 'y' ]; do
 	for OPTION in "${OK_OPTIONS[@]}"; do
 		OPT_NAME=${OPTION%% *}
 		OPT_TEXT=${OPTION#* }
-		( ! is_set "${CONFIG}" "${OPT_NAME}" ) && echo -e "Option ${OPT_NAME} is disabled and recommended to be enabled (${OPT_TEXT})"
+		( ! is_set "${OPT_NAME}" ) && echo -e "Option ${OPT_NAME} is disabled and recommended to be enabled (${OPT_TEXT})"
 	done
 
 	for OPTION in "${BAD_OPTIONS[@]}"; do
 		OPT_NAME=${OPTION%% *}
 		OPT_TEXT=${OPTION#* }
-		is_set "${CONFIG}" "${OPT_NAME}" && echo -e "Option ${OPT_NAME} is enabled and recommended to be disabled (${OPT_TEXT})"
+		is_set "${OPT_NAME}" && echo -e "Option ${OPT_NAME} is enabled and recommended to be disabled (${OPT_TEXT})"
 	done
 
 
@@ -348,9 +353,3 @@ if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
 echo -n "==> Cleaning up ... "
 rm linux-${KERNEL}.tar linux-${KERNEL}.tar.sign grsecurity-${GRSEC}.patch grsecurity-${GRSEC}.patch.sig
 if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
-
-if [ "${UNINSTALL}" == "y" ]; then
-	echo -n "==> Removing build tools ... "
-	apt-get -y -qq remove ${BUILDTOOLS} &> /dev/null
-	if [ $? -eq 0 ]; then echo "OK"; else echo "Failed"; exit 1; fi
-fi

@@ -1,3 +1,45 @@
+commit eab62f7d1c2e9788e04fcb496dfb63da84e52658
+Author: Alexey Derlaft <derlafff@ya.ru>
+Date:   Wed Sep 9 08:50:10 2015 +0000
+
+    README fixes
+
+commit ffdf204ae4db10ddefb3339e75d82508b1651bc5
+Author: Alexey Derlaft <derlafff@ya.ru>
+Date:   Wed Sep 9 08:46:48 2015 +0000
+
+    Checking configurations
+
+commit 6f4502df4f5f92f8c063a9bdc836931fef5aad10
+Author: Alexey Derlaft <derlafff@ya.ru>
+Date:   Fri Aug 28 01:53:57 2015 +0000
+
+    Ported to gpg-bashlib
+
+commit 43ae4d3e976f4b916c274b6ed027cbb337f077e4
+Author: Alexey Derlaft <derlafff@ya.ru>
+Date:   Fri Aug 21 12:25:02 2015 +0000
+
+    Mainstream fixes; make && instal header pkg
+
+commit 3e643ac7b3abc585ee45abd7181f9ce0f49189d2
+Author: Patrick Schleizer <adrelanos@riseup.net>
+Date:   Wed Apr 15 02:43:03 2015 +0000
+
+    minor
+
+commit ca55e494b147db7bbea2b698fd55cd570e7641e0
+Author: Patrick Schleizer <adrelanos@riseup.net>
+Date:   Tue Apr 14 20:33:36 2015 +0000
+
+    depends
+
+commit 1c0d930f3165b871e4857dbf677f8cf3fae7a3da
+Author: Patrick Schleizer <adrelanos@riseup.net>
+Date:   Tue Apr 14 13:47:04 2015 +0000
+
+    initial packaging
+
 commit be4f408c44afa9bbc154296883a8192a2b87d21b
 Author: Patrick Schleizer <adrelanos@riseup.net>
 Date:   Tue Apr 14 13:13:36 2015 +0000
